@@ -35,9 +35,9 @@ from .core import (
 
 #: 背景下拉项 -> AsciiOptions.background 取值
 BACKGROUNDS: dict[str, object] = {
-    "黑色": (0, 0, 0),
-    "白色": (255, 255, 255),
-    "透明": None,
+    "Black": (0, 0, 0),
+    "White": (255, 255, 255),
+    "Transparent": None,
 }
 
 #: 密度快捷按钮
@@ -122,7 +122,7 @@ class AsciiArtApp:
         self._canvas_image: ImageTk.PhotoImage | None = None
         self._checker_cache: tuple[tuple[int, int], Image.Image] | None = None
 
-        root.title("彩色 ASCII 艺术转换器")
+        root.title("Color ASCII Art Converter")
         root.geometry("1360x880")
         root.minsize(1000, 520)
 
@@ -142,21 +142,21 @@ class AsciiArtApp:
 
         toolbar = ttk.Frame(self.root, padding=(10, 8))
         toolbar.pack(side="top", fill="x")
-        ttk.Button(toolbar, text="打开图片…", command=self.open_image).pack(side="left")
+        ttk.Button(toolbar, text="Open Image…", command=self.open_image).pack(side="left")
         self.export_btn = ttk.Button(
-            toolbar, text="导出图片…", command=self.export_image, state="disabled"
+            toolbar, text="Export Image…", command=self.export_image, state="disabled"
         )
         self.export_btn.pack(side="left", padx=(6, 0))
         self.text_btn = ttk.Button(
-            toolbar, text="导出字符文本…", command=self.export_text, state="disabled"
+            toolbar, text="Export Text…", command=self.export_text, state="disabled"
         )
         self.text_btn.pack(side="left", padx=(6, 0))
-        self.file_label = ttk.Label(toolbar, text="尚未打开图片", foreground="#666")
+        self.file_label = ttk.Label(toolbar, text="No image opened", foreground="#666")
         self.file_label.pack(side="left", padx=(14, 0))
 
         status = ttk.Frame(self.root, padding=(12, 6))
         status.pack(side="bottom", fill="x")
-        self.status_var = tk.StringVar(value="打开一张图片开始。")
+        self.status_var = tk.StringVar(value="Open an image to begin.")
         ttk.Label(status, textvariable=self.status_var, foreground="#333").pack(side="left")
         self.font_hint_var = tk.StringVar(value="")
         ttk.Label(status, textvariable=self.font_hint_var, foreground="#888").pack(side="right")
@@ -184,19 +184,19 @@ class AsciiArtApp:
         row = 0
 
         # -- 字符密度（主角）----------------------------------------------- #
-        box = ttk.LabelFrame(panel, text="字符密度", padding=10)
+        box = ttk.LabelFrame(panel, text="Character Density", padding=10)
         box.grid(row=row, column=0, sticky="ew", pady=(0, 10))
         row += 1
 
         self.cols_var = tk.IntVar(value=_DEFAULTS.cols)
         self.cols_scale, self.cols_label = self._add_slider(
-            box, "列数 —— 越大字符越多、越细腻", 20, 400, _DEFAULTS.cols,
-            lambda v: f"{int(round(v))} 列", self._on_cols_change,
+            box, "Columns — higher means more detail", 20, 400, _DEFAULTS.cols,
+            lambda v: f"{int(round(v))} cols", self._on_cols_change,
         )
 
         presets = ttk.Frame(box)
         presets.pack(fill="x")
-        ttk.Label(presets, text="快捷：").pack(side="left")
+        ttk.Label(presets, text="Presets:").pack(side="left")
         for value in DENSITY_PRESETS:
             ttk.Button(
                 presets, text=str(value), width=4,
@@ -204,17 +204,17 @@ class AsciiArtApp:
             ).pack(side="left", padx=2)
 
         # -- 外观 ---------------------------------------------------------- #
-        box = ttk.LabelFrame(panel, text="外观", padding=10)
+        box = ttk.LabelFrame(panel, text="Appearance", padding=10)
         box.grid(row=row, column=0, sticky="ew", pady=(0, 10))
         row += 1
 
         self.font_var = tk.IntVar(value=_DEFAULTS.font_size)
         self.font_scale, self.font_label = self._add_slider(
-            box, "字号 —— 决定输出图片的大小", 8, 48, _DEFAULTS.font_size,
+            box, "Font size — controls output image size", 8, 48, _DEFAULTS.font_size,
             lambda v: f"{int(round(v))} px", self._on_font_change,
         )
 
-        ttk.Label(box, text="字符集（顺序无所谓，分级按实测墨量排）").pack(anchor="w")
+        ttk.Label(box, text="Character set (order does not matter; levels use measured ink)").pack(anchor="w")
         self.chars_var = tk.StringVar(value=_DEFAULTS.chars)
         ttk.Entry(box, textvariable=self.chars_var).pack(fill="x", pady=(2, 4))
         self.chars_var.trace_add("write", lambda *_: self.schedule_render())
@@ -222,19 +222,19 @@ class AsciiArtApp:
         char_btns = ttk.Frame(box)
         char_btns.pack(fill="x", pady=(0, 6))
         ttk.Button(
-            char_btns, text="实测分级表…", command=self.show_ramp_table
+            char_btns, text="Measured Ramp…", command=self.show_ramp_table
         ).pack(side="left")
         ttk.Button(
-            char_btns, text="块元素字符集",
+            char_btns, text="Block Characters",
             command=lambda: self.chars_var.set(BLOCK_CHARS),
         ).pack(side="left", padx=(4, 0))
         ttk.Button(
-            char_btns, text="全 ASCII",
+            char_btns, text="Full ASCII",
             command=lambda: self.chars_var.set(ASCII_CHARS),
         ).pack(side="left", padx=(4, 0))
 
-        ttk.Label(box, text="背景").pack(anchor="w")
-        self.bg_var = tk.StringVar(value="黑色")
+        ttk.Label(box, text="Background").pack(anchor="w")
+        self.bg_var = tk.StringVar(value="Black")
         bg_combo = ttk.Combobox(
             box, textvariable=self.bg_var, values=list(BACKGROUNDS), state="readonly"
         )
@@ -242,11 +242,11 @@ class AsciiArtApp:
         bg_combo.bind("<<ComboboxSelected>>", lambda _e: self.schedule_render())
 
         # -- 亮度与颜色 ---------------------------------------------------- #
-        box = ttk.LabelFrame(panel, text="亮度与颜色", padding=10)
+        box = ttk.LabelFrame(panel, text="Brightness & Color", padding=10)
         box.grid(row=row, column=0, sticky="ew", pady=(0, 10))
         row += 1
 
-        ttk.Label(box, text="亮度度量方式").pack(anchor="w")
+        ttk.Label(box, text="Brightness metric").pack(anchor="w")
         self.metric_var = tk.StringVar(value=_DEFAULTS.metric)
         metric_combo = ttk.Combobox(
             box, textvariable=self.metric_var,
@@ -261,30 +261,30 @@ class AsciiArtApp:
 
         self.candidates_var = tk.IntVar(value=_DEFAULTS.candidates)
         self.candidates_scale, self.candidates_label = self._add_slider(
-            box, "查找候选数（1 = 只取上界那一个）", 1, 10, _DEFAULTS.candidates,
-            lambda v: f"{int(round(v))} 个", self._on_candidates_change,
+            box, "Candidate count (1 = use only the ceiling)", 1, 10, _DEFAULTS.candidates,
+            lambda v: f"{int(round(v))} candidates", self._on_candidates_change,
         )
         self.candidates_hint = ttk.Label(
             box,
-            text="从亮度上界那级起往上多考察几个更密的字符，"
-                 "取区域平均色最接近原图的；误差只会更小。",
+            text="Starting at the ceiling level, inspect denser characters and choose the one "
+                 "whose average color is closest to the source; the error can only decrease.",
             foreground="#666", wraplength=252, justify="left",
         )
         self.candidates_hint.pack(anchor="w", pady=(0, 6))
 
         self.highlight_var = tk.DoubleVar(value=_DEFAULTS.highlight)
         self.highlight_scale, self.highlight_label = self._add_slider(
-            box, "高亮保色（1 = 高亮不变灰）", 0.0, 1.0, _DEFAULTS.highlight,
+            box, "Highlight color preservation (1 = keep highlights colored)", 0.0, 1.0, _DEFAULTS.highlight,
             lambda v: f"{v:.2f}", self._on_highlight_change,
         )
 
         self.image_sat_var = tk.DoubleVar(value=_DEFAULTS.image_saturation)
         self.image_sat_scale, self.image_sat_label = self._add_slider(
-            box, "图像饱和度（0 = 灰度，>1 更艳）", 0.0, 2.0, _DEFAULTS.image_saturation,
+            box, "Image saturation (0 = grayscale, >1 = more vivid)", 0.0, 2.0, _DEFAULTS.image_saturation,
             lambda v: f"{v:.2f}", self._on_image_sat_change,
         )
 
-        ttk.Label(box, text="直方图均衡化").pack(anchor="w")
+        ttk.Label(box, text="Histogram equalization").pack(anchor="w")
         self.equalize_var = tk.StringVar(value=_DEFAULTS.equalize)
         eq_combo = ttk.Combobox(
             box, textvariable=self.equalize_var,
@@ -299,23 +299,23 @@ class AsciiArtApp:
 
         self.eq_window_var = tk.IntVar(value=_DEFAULTS.equalize_window)
         self.eq_window_scale, self.eq_window_label = self._add_slider(
-            box, "局部窗口（字符单元，越小越局部）", 2, 64, _DEFAULTS.equalize_window,
-            lambda v: f"{int(round(v))} 格", self._on_eq_window_change,
+            box, "Local window (character cells; smaller = more local)", 2, 64, _DEFAULTS.equalize_window,
+            lambda v: f"{int(round(v))} cells", self._on_eq_window_change,
         )
 
         self.eq_clip_var = tk.DoubleVar(value=_DEFAULTS.equalize_clip)
         self.eq_clip_scale, self.eq_clip_label = self._add_slider(
-            box, "局部限幅（0 = 不限幅 / 纯 AHE）", 0.0, 8.0, _DEFAULTS.equalize_clip,
-            lambda v: "不限幅" if v < 0.05 else f"{v:.1f}x", self._on_eq_clip_change,
+            box, "Local clip limit (0 = unlimited / pure AHE)", 0.0, 8.0, _DEFAULTS.equalize_clip,
+            lambda v: "Unlimited" if v < 0.05 else f"{v:.1f}x", self._on_eq_clip_change,
         )
 
         self.gamma_var = tk.DoubleVar(value=_DEFAULTS.gamma)
         self.gamma_scale, self.gamma_label = self._add_slider(
-            box, "亮度伽马（<1 提亮，>1 压暗）", 0.3, 3.0, _DEFAULTS.gamma,
+            box, "Brightness gamma (<1 = brighter, >1 = darker)", 0.3, 3.0, _DEFAULTS.gamma,
             lambda v: f"{v:.2f}", self._on_gamma_change,
         )
 
-        ttk.Label(box, text="配色方式").pack(anchor="w")
+        ttk.Label(box, text="Color mode").pack(anchor="w")
         self.color_mode_var = tk.StringVar(value=_DEFAULTS.color_mode)
         mode_combo = ttk.Combobox(
             box, textvariable=self.color_mode_var,
@@ -330,18 +330,18 @@ class AsciiArtApp:
 
         self.sat_var = tk.DoubleVar(value=_DEFAULTS.glyph_purity)
         self.sat_scale, self.sat_label = self._add_slider(
-            box, "字符颜色纯度（仅「pure」配色生效）", 0.0, 1.0, _DEFAULTS.glyph_purity,
+            box, "Glyph color purity (only active in 'pure' mode)", 0.0, 1.0, _DEFAULTS.glyph_purity,
             lambda v: f"{v:.2f}", self._on_sat_change,
         )
 
         self.invert_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(
-            box, text="反相（浅色背景用）", variable=self.invert_var,
+            box, text="Invert (for light backgrounds)", variable=self.invert_var,
             command=self.schedule_render,
         ).pack(anchor="w")
 
         # -- 输出信息 ------------------------------------------------------ #
-        box = ttk.LabelFrame(panel, text="输出信息", padding=10)
+        box = ttk.LabelFrame(panel, text="Output Info", padding=10)
         box.grid(row=row, column=0, sticky="ew")
         self.info_var = tk.StringVar(value="—")
         ttk.Label(box, textvariable=self.info_var, justify="left").pack(anchor="w")
@@ -455,10 +455,10 @@ class AsciiArtApp:
                 self.chars_var.get(), font_path=None, font_size=self.font_var.get()
             )
         except (ValueError, RuntimeError) as exc:
-            messagebox.showerror("字符集有问题", str(exc))
+            messagebox.showerror("Invalid Character Set", str(exc))
             return
         win = tk.Toplevel(self.root)
-        win.title("字符分级表（实测）")
+        win.title("Measured Character Ramp")
         win.geometry("560x520")
         text = tk.Text(win, wrap="none", font=("Consolas", 10))
         text.pack(fill="both", expand=True, padx=8, pady=8)
@@ -472,10 +472,10 @@ class AsciiArtApp:
     def open_image(self, path: str | None = None) -> None:
         if not path:
             path = filedialog.askopenfilename(
-                title="选择图片",
+                title="Choose Image",
                 filetypes=[
-                    ("图片", "*.png *.jpg *.jpeg *.bmp *.webp *.gif *.tif *.tiff"),
-                    ("所有文件", "*.*"),
+                    ("Images", "*.png *.jpg *.jpeg *.bmp *.webp *.gif *.tif *.tiff"),
+                    ("All files", "*.*"),
                 ],
             )
         if not path:
@@ -485,7 +485,7 @@ class AsciiArtApp:
                 img.load()
                 self.source = img.convert("RGBA")
         except OSError as exc:
-            messagebox.showerror("打开失败", str(exc))
+            messagebox.showerror("Open Failed", str(exc))
             return
         self.source_path = Path(path)
         w, h = self.source.size
@@ -501,10 +501,10 @@ class AsciiArtApp:
             return
         stem = self.source_path.stem if self.source_path else "ascii"
         path = filedialog.asksaveasfilename(
-            title="导出 ASCII 图片", defaultextension=".png",
+            title="Export ASCII Image", defaultextension=".png",
             initialfile=f"{stem}_ascii.png",
-            filetypes=[("PNG 图片", "*.png"), ("WebP 图片", "*.webp"),
-                       ("JPEG 图片", "*.jpg"), ("BMP 图片", "*.bmp")],
+            filetypes=[("PNG Image", "*.png"), ("WebP Image", "*.webp"),
+                       ("JPEG Image", "*.jpg"), ("BMP Image", "*.bmp")],
         )
         if not path:
             return
@@ -517,22 +517,22 @@ class AsciiArtApp:
         try:
             image.save(path)
         except OSError as exc:
-            messagebox.showerror("保存失败", str(exc))
+            messagebox.showerror("Save Failed", str(exc))
             return
-        self.status_var.set(f"已导出图片 {path}")
+        self.status_var.set(f"Exported image: {path}")
 
     def export_text(self) -> None:
         if self.result is None:
             return
         stem = self.source_path.stem if self.source_path else "ascii"
         path = filedialog.asksaveasfilename(
-            title="导出字符文本", defaultextension=".txt",
-            initialfile=f"{stem}_ascii.txt", filetypes=[("文本文件", "*.txt")],
+            title="Export Character Text", defaultextension=".txt",
+            initialfile=f"{stem}_ascii.txt", filetypes=[("Text File", "*.txt")],
         )
         if not path:
             return
         Path(path).write_text(self.result.text, encoding="utf-8")
-        self.status_var.set(f"已导出文本 {path}")
+        self.status_var.set(f"Exported text: {path}")
 
     # ------------------------------------------------------------- 渲染 --
     def _collect_options(self) -> AsciiOptions:
@@ -566,7 +566,7 @@ class AsciiArtApp:
         if self.source is None:
             return
         self._token += 1
-        self.status_var.set("渲染中…")
+        self.status_var.set("Rendering…")
         threading.Thread(
             target=self._worker,
             args=(self._token, self.source, self._collect_options()),
@@ -589,7 +589,7 @@ class AsciiArtApp:
                 if token != self._token:
                     continue                       # 过期结果，丢掉
                 if error is not None:
-                    self.status_var.set(f"渲染失败：{error}")
+                    self.status_var.set(f"Render failed: {error}")
                     traceback.print_exception(type(error), error, error.__traceback__)
                     continue
                 self.result = result
@@ -609,21 +609,21 @@ class AsciiArtApp:
         font = Path(res.font_path).name if res.font_path else "?"
         used = [ch for ch in res.ramp.chars if ch in set("".join(res.lines))]
         self.info_var.set(
-            f"网格：{res.cols} 列 x {res.rows} 行\n"
-            f"字框：{res.cell_w} x {res.cell_h} px\n"
-            f"输出：{ow} x {oh} px\n"
-            f"源图：{sw} x {sh} px\n"
-            f"字体：{font} @ {res.font_size}\n"
-            f"分级：{len(res.ramp.chars)} 级，用到 {len(used)} 级\n"
-            f"最大墨量：{res.ramp.max_ink:.3f}"
-            f"（亮度上限 {res.ramp.max_ink:.0%}）\n"
-            f"候选：{self.candidates_var.get()} 个"
-            f"，{int((res.grid_index != res.base_index).sum())} 个单元换用了更密的字符\n"
-            f"耗时：{self.last_elapsed * 1000:.0f} ms"
+            f"Grid: {res.cols} cols x {res.rows} rows\n"
+            f"Cell: {res.cell_w} x {res.cell_h} px\n"
+            f"Output: {ow} x {oh} px\n"
+            f"Source: {sw} x {sh} px\n"
+            f"Font: {font} @ {res.font_size}\n"
+            f"Levels: {len(res.ramp.chars)} total, {len(used)} used\n"
+            f"Maximum ink: {res.ramp.max_ink:.3f}"
+            f" (brightness ceiling {res.ramp.max_ink:.0%})\n"
+            f"Candidates: {self.candidates_var.get()}"
+            f"; {int((res.grid_index != res.base_index).sum())} cells use a denser character\n"
+            f"Elapsed: {self.last_elapsed * 1000:.0f} ms"
         )
         self.font_hint_var.set(f"{font} @ {res.font_size}")
         self.status_var.set(
-            f"{res.cols} x {res.rows} 个字符 · 输出 {ow}x{oh} · "
+            f"{res.cols} x {res.rows} chars · Output {ow}x{oh} · "
             f"{self.last_elapsed * 1000:.0f} ms"
         )
 
@@ -642,7 +642,7 @@ class AsciiArtApp:
         if self.result is None:
             self.canvas.create_text(
                 cw // 2, ch // 2,
-                text="点击左上角「打开图片…」\n然后拖动右侧的字符密度滑块",
+                text="Click Open Image… in the top-left\nthen adjust the Character Density slider on the right",
                 fill="#8a8a8a", justify="center", font=("Segoe UI", 13),
             )
             self._canvas_image = None
@@ -682,9 +682,9 @@ def main(argv: list[str] | None = None) -> int:
         root = tk.Tk()
         root.withdraw()
         messagebox.showerror(
-            "缺少等宽字体",
-            "系统里找不到可用的等宽字体，请安装 Consolas / DejaVu Sans Mono 等，"
-            "或在命令行用 --font 指定字体文件。",
+            "No Monospace Font",
+            "No usable monospace font was found. Install Consolas / DejaVu Sans Mono, "
+            "or specify a font file with --font on the command line.",
         )
         root.destroy()
         return 1

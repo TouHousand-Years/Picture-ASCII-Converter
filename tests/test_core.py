@@ -424,15 +424,15 @@ def test_edge_detection_is_disabled_for_now():
     try:
         aa.convert(solid((120, 90, 60), (120, 120)), aa.AsciiOptions(cols=12, edges=0.3))
     except ValueError as exc:
-        assert "屏蔽" in str(exc)
+        assert "temporarily disabled" in str(exc)
     else:
-        raise AssertionError("屏蔽期间 edges>0 应当报错")
+        raise AssertionError("edges>0 should fail while edge detection is disabled")
 
 
 def test_describe_lists_every_level():
     text = GlyphSet(" .#@", None, 20).describe()
     assert len(text.splitlines()) == 3 + 4      # 表头两行 + 收尾一行 + 4 级
-    assert "最大墨量" in text
+    assert "Maximum ink" in text
 
 
 # ------------------------------------------------------------- 查表规则 --
@@ -1001,7 +1001,7 @@ def test_cli_list_ramp_and_convert(tmp_path=Path("samples/_tmp_cli")):
         cwd=root, capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
-    assert "字符分级表" in proc.stdout and "最大墨量" in proc.stdout
+    assert "Character ramp" in proc.stdout and "Maximum ink" in proc.stdout
 
     tmp_path.mkdir(parents=True, exist_ok=True)
     src, dst = tmp_path / "in.png", tmp_path / "out.png"
@@ -1013,7 +1013,7 @@ def test_cli_list_ramp_and_convert(tmp_path=Path("samples/_tmp_cli")):
     )
     assert proc.returncode == 0, proc.stderr
     assert dst.exists()
-    assert "候选 3 级" in proc.stderr
+    assert "Candidates 3" in proc.stderr
 
     # --full-chars 可用，且与 --block-chars 互斥
     proc = subprocess.run(
@@ -1022,7 +1022,7 @@ def test_cli_list_ramp_and_convert(tmp_path=Path("samples/_tmp_cli")):
         cwd=root, capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
-    assert "字符集 95 级" in proc.stderr, proc.stderr
+    assert "Character set: 95 levels" in proc.stderr, proc.stderr
     proc = subprocess.run(
         [sys.executable, "-m", "ascii_art", str(src), "--full-chars", "--block-chars"],
         cwd=root, capture_output=True, text=True,

@@ -34,130 +34,130 @@ _DEFAULTS = AsciiOptions()
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ascii_art",
-        description="把彩色图片转换成彩色 ASCII 字符阵列，并可导出为新的图片。",
+        description="Convert a color image to a color ASCII art grid and optionally export it as an image.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "示例:\n"
+            "Examples:\n"
             "  python -m ascii_art photo.jpg -o ascii.png\n"
-            "  python -m ascii_art photo.jpg -o ascii.png -c 200              # 更密的字符\n"
-            "  python -m ascii_art photo.jpg -o ascii.png --cell-width 6       # 按字符像素宽控密度\n"
+            "  python -m ascii_art photo.jpg -o ascii.png -c 200              # denser characters\n"
+            "  python -m ascii_art photo.jpg -o ascii.png --cell-width 6       # control density by cell width\n"
             "  python -m ascii_art photo.jpg -o ascii.png --image-saturation 1.5\n"
             "  python -m ascii_art photo.jpg -o ascii.png --equalize local --equalize-window 8\n"
-            "  python -m ascii_art photo.jpg -o ascii.png --highlight 1        # 高亮保住颜色\n"
-            "  python -m ascii_art photo.jpg -o ascii.png --chars \" ░▒▓█\"      # 高保真配色\n"
-            "  python -m ascii_art photo.jpg --list-ramp                      # 看实测分级表\n"
-            "  python -m ascii_art photo.jpg --ansi                           # 终端里彩色查看\n"
+            "  python -m ascii_art photo.jpg -o ascii.png --highlight 1        # preserve highlight colors\n"
+            "  python -m ascii_art photo.jpg -o ascii.png --chars \" \\u2591\\u2592\\u2593\\u2588\" # high-fidelity color matching\n"
+            "  python -m ascii_art photo.jpg --list-ramp                      # view the measured character ramp\n"
+            "  python -m ascii_art photo.jpg --ansi                           # view in color in the terminal\n"
             "\n"
-            f"默认字符集: {DEFAULT_CHARS!r}\n"
-            "分级不是手写的，而是运行时实测每个字符的墨量后排出来的，\n"
-            "用 --list-ramp 可以看到实测结果。\n"
+            f"Default character set: {DEFAULT_CHARS!r}\n"
+            "Levels are sorted at runtime using each character's measured ink coverage,\n"
+            "which you can inspect with --list-ramp.\n"
         ),
     )
-    parser.add_argument("input", nargs="?", help="输入图片路径（PNG/JPG/BMP/WebP/GIF 等）")
-    parser.add_argument("-o", "--output", help="输出的 ASCII 图片路径；不写则只打印字符文本")
+    parser.add_argument("input", nargs="?", help="Input image path (PNG/JPG/BMP/WebP/GIF, etc.)")
+    parser.add_argument("-o", "--output", help="Output ASCII image path; if omitted, print character text only")
 
-    density = parser.add_argument_group("字符密度")
+    density = parser.add_argument_group("Character density")
     density.add_argument(
         "-c", "--cols", "--density", type=int, default=_DEFAULTS.cols, metavar="N",
-        help="字符列数，越大越细腻（默认 120）",
+        help="Number of character columns; higher values add detail (default: 120)",
     )
     density.add_argument(
         "--cell-width", type=float, metavar="PX",
-        help="每个字符占原图的像素宽度；给定时覆盖 --cols",
+        help="Pixel width of each character cell; overrides --cols when provided",
     )
 
-    font = parser.add_argument_group("字体与字符集")
-    font.add_argument("--font", help="等宽字体文件路径（.ttf/.ttc）")
+    font = parser.add_argument_group("Font and character set")
+    font.add_argument("--font", help="Monospace font file path (.ttf/.ttc)")
     font.add_argument(
         "--font-size", type=int, default=_DEFAULTS.font_size, metavar="PX",
-        help="输出图里的字号，同时决定输出图大小（默认 20）",
+        help="Font size in the output image; also controls output dimensions (default: 20)",
     )
     charset = font.add_mutually_exclusive_group()
     charset.add_argument(
         "--chars", default=_DEFAULTS.chars, metavar="STR",
-        help=_esc(f"字符集，顺序无所谓（默认 {DEFAULT_CHARS!r}）"),
+        help=_esc(f"Character set; order does not matter (default: {DEFAULT_CHARS!r})"),
     )
     charset.add_argument(
         "--block-chars", action="store_true", dest="block_chars",
-        help=_esc(f"改用块元素字符集 {BLOCK_CHARS!r}：墨量能到 1.0，配色可精确还原亮度"),
+        help=_esc(f"Use the block-character set {ascii(BLOCK_CHARS)}; ink reaches 1.0 for accurate brightness matching"),
     )
     charset.add_argument(
         "--full-chars", action="store_true", dest="full_chars",
-        help=f"改用全部可打印 ASCII（{len(ASCII_CHARS)} 个字符）：分级更细，"
-             "但近半数字形墨量几乎相同，纹理也更杂",
+        help=f"Use all printable ASCII characters ({len(ASCII_CHARS)} chars): finer levels, "
+             "but many glyphs have nearly identical ink coverage and add visual noise",
     )
     font.add_argument(
         "--list-ramp", action="store_true",
-        help="打印实测的字符分级表（字符 / 归一化亮度 / 墨量）后退出",
+        help="Print the measured character ramp (character / normalized brightness / ink) and exit",
     )
 
-    look = parser.add_argument_group("亮度与颜色")
+    look = parser.add_argument_group("Brightness and color")
     look.add_argument(
         "--metric", choices=sorted(BRIGHTNESS_METRICS), default=_DEFAULTS.metric,
-        help="亮度度量方式（默认 luminance）",
+        help="Brightness metric (default: luminance)",
     )
     look.add_argument(
         "--gamma", type=float, default=_DEFAULTS.gamma,
-        help="查表前的亮度伽马校正，<1 提亮、>1 压暗（默认 1.0）",
+        help="Gamma correction before lookup; <1 brightens and >1 darkens (default: 1.0)",
     )
     look.add_argument(
         "--image-saturation", type=float, default=_DEFAULTS.image_saturation, metavar="K",
-        help="图像饱和度倍数，1.0 原样、0 变灰、>1 更艳（默认 1.0）",
+        help="Image saturation multiplier; 1.0 is unchanged, 0 is grayscale, >1 is more vivid (default: 1.0)",
     )
     look.add_argument(
         "--color-mode", choices=sorted(COLOR_MODES), default=_DEFAULTS.color_mode,
-        help="match = 解出让区域平均色最接近原图的填充色（默认）；pure = 旧的纯度拉满",
+        help="match = fill color closest to the source area's average (default); pure = maximize color purity",
     )
     look.add_argument(
         "--candidates", type=int, default=_DEFAULTS.candidates, metavar="N",
-        help="查找候选数：1 = 只取「最小的平均亮度不小于目标」的那一个（默认）；"
-             ">1 时从那一级起往上多考察 N 个更密的字符，取区域平均色最接近原图的",
+        help="Candidate count: 1 = use only the least dense glyph at or above the target (default); "
+             ">1 = inspect N denser glyphs and choose the one with the closest average color",
     )
     look.add_argument(
         "--equalize", choices=sorted(EQUALIZE_MODES), default=_DEFAULTS.equalize,
-        help="直方图均衡化：none(默认) / global(全局) / local(局部自适应)",
+        help="Histogram equalization: none (default) / global / local (adaptive)",
     )
     look.add_argument(
         "--equalize-window", type=int, default=_DEFAULTS.equalize_window, metavar="N",
-        help="局部均衡化的窗口边长，单位是字符单元而非像素，越小越局部（默认 16）",
+        help="Local equalization window size in character cells, not pixels; smaller is more local (default: 16)",
     )
     look.add_argument(
         "--equalize-clip", type=float, default=_DEFAULTS.equalize_clip, metavar="F",
-        help="局部均衡化的对比度限幅，0 = 不限幅；平坦区域出噪点时调大到 2~4",
+        help="Local equalization clip limit; 0 = unlimited; increase to 2-4 if flat areas become noisy",
     )
     look.add_argument(
         "--highlight", type=float, default=_DEFAULTS.highlight, metavar="F",
-        help="高亮保色强度 0~1：0(默认) = 逐通道截断，绝对色差最小但高亮会变灰；"
-             "1 = 等比缩放，色相与彩度完整保留（高亮不变灰），绝对色差略升",
+        help="Highlight color preservation 0-1: 0 (default) clips each channel for minimum error; "
+             "1 scales proportionally to preserve hue and saturation",
     )
     look.add_argument(
         "--invert", action="store_true",
-        help="反相：暗处用密字符、亮处用空格，配合浅色背景使用",
+        help="Invert: use dense glyphs for dark areas and spaces for bright areas; use with a light background",
     )
     look.add_argument(
         "--bg", default="black", metavar="COLOR",
-        help='背景色：black / white / transparent / "#rrggbb"（默认 black）',
+        help='Background color: black / white / transparent / "#rrggbb" (default: black)',
     )
 
-    pure = parser.add_argument_group("仅 --color-mode pure 生效")
+    pure = parser.add_argument_group("Only active with --color-mode pure")
     pure.add_argument(
         "--glyph-purity", type=float, default=_DEFAULTS.glyph_purity, metavar="K",
-        help="字符颜色饱和度，1.0 = 最高纯度（默认 1.0）",
+        help="Glyph color saturation; 1.0 = maximum purity (default: 1.0)",
     )
     pure.add_argument(
         "--chroma-threshold", type=float, default=_DEFAULTS.chroma_floor, metavar="C",
-        help="色度低于此值视为灰色、输出白色字符（默认 0.04）",
+        help="Treat colors below this chroma as gray and output white glyphs (default: 0.04)",
     )
 
-    extra = parser.add_argument_group("其它输出")
-    extra.add_argument("--text", metavar="PATH", help="额外把纯字符文本写到该文件")
+    extra = parser.add_argument_group("Other output")
+    extra.add_argument("--text", metavar="PATH", help="Also write plain character text to this file")
     extra.add_argument(
         "--ansi", action="store_true",
-        help="把彩色字符阵列直接打印到终端（24 位真彩色）",
+        help="Print the color ASCII grid directly to the terminal (24-bit true color)",
     )
-    extra.add_argument("-q", "--quiet", action="store_true", help="不打印统计信息")
+    extra.add_argument("-q", "--quiet", action="store_true", help="Do not print statistics")
     extra.add_argument(
-        "--list-fonts", action="store_true", help="显示默认选用的字体后退出",
+        "--list-fonts", action="store_true", help="Show the default font selection and exit",
     )
     return parser
 
@@ -186,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.list_fonts:
-        print(find_default_font() or "（未找到可用的等宽字体）")
+        print(find_default_font() or "No usable monospace font found")
         return 0
 
     if args.block_chars:
@@ -200,12 +200,12 @@ def main(argv: list[str] | None = None) -> int:
         try:
             print(GlyphSet(chars, args.font, args.font_size).describe())
         except (ValueError, RuntimeError) as exc:
-            print(f"错误：{exc}", file=sys.stderr)
+            print(f"Error: {exc}", file=sys.stderr)
             return 1
         return 0
 
     if not args.input:
-        parser.error("需要给出输入图片路径（或用 gui 打开图形界面）")
+        parser.error("an input image path is required (or use --gui to open the graphical interface)")
         return 2
 
     opts = AsciiOptions(
@@ -234,10 +234,10 @@ def main(argv: list[str] | None = None) -> int:
             img.load()
             result = convert(img, opts)
     except FileNotFoundError:
-        print(f"错误：找不到输入文件 {args.input}", file=sys.stderr)
+        print(f"Error: input file not found: {args.input}", file=sys.stderr)
         return 1
     except (OSError, ValueError, RuntimeError) as exc:
-        print(f"错误：{exc}", file=sys.stderr)
+        print(f"Error: {exc}", file=sys.stderr)
         return 1
 
     if args.output:
@@ -260,30 +260,30 @@ def main(argv: list[str] | None = None) -> int:
         ow, oh = result.size
         used = [ch for ch in result.ramp.chars if ch in set("".join(result.lines))]
         info = [
-            f"源图 {sw}x{sh} -> 网格 {result.cols} 列 x {result.rows} 行",
-            f"字框 {result.cell_w}x{result.cell_h}px  字号 {result.font_size}"
+            f"Source {sw}x{sh} -> grid {result.cols} cols x {result.rows} rows",
+            f"Cell {result.cell_w}x{result.cell_h}px  font size {result.font_size}"
             f"  {Path(result.font_path).name}",
-            f"输出 {ow}x{oh}",
-            f"字符集 {len(result.ramp.chars)} 级，本图用到 {len(used)} 级："
+            f"Output {ow}x{oh}",
+            f"Character set: {len(result.ramp.chars)} levels, {len(used)} used:"
             f"{''.join(used)!r}",
-            f"最大墨量 {result.ramp.max_ink:.3f}"
-            f"（黑底下输出亮度上限约 {result.ramp.max_ink:.0%}）",
+            f"Maximum ink {result.ramp.max_ink:.3f}"
+            f" (brightness ceiling on black: about {result.ramp.max_ink:.0%})",
         ]
         if result.added_edge_glyphs:
             info.append(
-                f"边界替换：补进字符集 {result.added_edge_glyphs!r}，"
-                f"强制替换 {result.forced_ratio:.1%} 的单元"
+                f"Edge replacement: added {result.added_edge_glyphs!r} to the character set; "
+                f"forced replacement in {result.forced_ratio:.1%} of cells"
             )
         if args.candidates > 1:
             moved = int((result.grid_index != result.base_index).sum())
             total = result.grid_index.size
             info.append(
-                f"候选 {args.candidates} 级：{moved}/{total} 个单元换用了更密的字符"
+                f"Candidates {args.candidates}: {moved}/{total} cells use a denser glyph"
             )
         if args.output:
-            info.append(f"已保存 {args.output}")
+            info.append(f"Saved image: {args.output}")
         if args.text:
-            info.append(f"已保存文本 {args.text}")
+            info.append(f"Saved text: {args.text}")
         print("\n".join(info), file=sys.stderr)
 
     return 0

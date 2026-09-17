@@ -102,22 +102,22 @@ _EDGE_ANGLE_TOL = np.radians(30.0)
 
 #: 亮度度量方式 -> 说明。取值也可作为 ``AsciiOptions.metric`` 使用。
 BRIGHTNESS_METRICS: dict[str, str] = {
-    "luminance": "感知亮度 Rec.709 (0.2126R + 0.7152G + 0.0722B)，默认",
-    "luma": "感知亮度 Rec.601 (0.299R + 0.587G + 0.114B)",
-    "value": "HSV 明度 max(R,G,B)，高饱和色更亮",
-    "lightness": "HSL 亮度 (max + min) / 2",
-    "average": "算术平均 (R + G + B) / 3",
+    "luminance": "Perceptual luminance Rec.709 (0.2126R + 0.7152G + 0.0722B), default",
+    "luma": "Perceptual luma Rec.601 (0.299R + 0.587G + 0.114B)",
+    "value": "HSV value max(R, G, B); saturated colors appear brighter",
+    "lightness": "HSL lightness (max + min) / 2",
+    "average": "Arithmetic mean (R + G + B) / 3",
 }
 
 COLOR_MODES: dict[str, str] = {
-    "match": "解出使区域平均色最接近原图的填充色（默认）",
-    "pure": "旧规则：只取色相、纯度拉满（颜色鲜艳但对不上原图亮度）",
+    "match": "Solve for a fill color closest to the source area's average color (default)",
+    "pure": "Legacy mode: maximize hue purity (vivid colors, less accurate brightness)",
 }
 
 EQUALIZE_MODES: dict[str, str] = {
-    "none": "不做均衡化（默认）",
-    "global": "全局直方图均衡化：把整体亮度分布拉平，暗部亮部一起展开",
-    "local": "局部（自适应）均衡化：分块各自拉平再双线性插值，局部对比一次到位",
+    "none": "No equalization (default)",
+    "global": "Global histogram equalization: stretch the overall brightness distribution",
+    "local": "Local adaptive equalization: equalize tiles and blend them for local contrast",
 }
 
 # 首选等宽字体。ImageFont.truetype 会在系统字体目录里查找这些文件名。
@@ -154,9 +154,9 @@ class CharRamp:
 
     def __post_init__(self) -> None:
         if len(self.chars) != len(self.coverage) or len(self.chars) != len(self.ink):
-            raise ValueError("字符数、归一化亮度、墨量三者的长度必须一致")
+            raise ValueError("Character count, normalized brightness, and ink levels must have the same length")
         if not self.chars:
-            raise ValueError("字符查找表不能为空")
+            raise ValueError("Character lookup table cannot be empty")
 
     # -- 查询 -------------------------------------------------------------- #
     def index_for(self, brightness: float) -> int:
@@ -219,21 +219,21 @@ class GlyphSet:
         seen: set[str] = set()
         self.requested = [c for c in seq if not (c in seen or seen.add(c))]
         if not self.requested:
-            raise ValueError("字符集不能为空")
+            raise ValueError("Character set cannot be empty")
         bad = [c for c in self.requested if len(c) != 1]
         if bad:
-            raise ValueError(f"字符集里每个元素都必须是单个字符，收到 {bad!r}")
+            raise ValueError(f"Each character-set item must be one character; received {bad!r}")
 
         self.font_size = int(font_size)
         self.font_path = font_path or find_default_font()
         if self.font_path is None:
             raise RuntimeError(
-                "找不到可用的等宽字体，请用 font_path=/--font 指定 .ttf/.ttc 文件"
+                "No usable monospace font found; specify a .ttf/.ttc file with font_path/--font"
             )
         try:
             self.font = ImageFont.truetype(self.font_path, self.font_size)
         except OSError as exc:
-            raise RuntimeError(f"无法加载字体 {self.font_path!r}: {exc}") from exc
+            raise RuntimeError(f"Could not load font {self.font_path!r}: {exc}") from exc
 
         self.ascent, self.descent = self.font.getmetrics()
         self.cell_h = max(1, self.ascent + self.descent)
@@ -244,7 +244,7 @@ class GlyphSet:
         raw = np.stack([self._render(ch) for ch in self.requested])
         ink = raw.reshape(len(self.requested), -1).mean(axis=1)
         if ink.max() <= 0.0:
-            raise ValueError("字符集全是空白字符，无法建立亮度分级")
+            raise ValueError("Character set contains only whitespace; cannot build brightness levels")
 
         # 按实测墨量升序排；同一墨量时保持用户给定顺序（稳定）
         order = np.lexsort((np.arange(len(self.requested)), ink))
@@ -268,13 +268,13 @@ class GlyphSet:
         """给用户看的分级表。"""
         font = self.font_path or "?"
         lines = [
-            f"字符分级表（{font} @ {self.font_size}px，字框 {self.cell_w}x{self.cell_h}px）",
-            "  级  字符   归一化亮度   实测墨量",
+            f"Character ramp ({font} @ {self.font_size}px, cell {self.cell_w}x{self.cell_h}px)",
+            "  Id  Char   Normalized brightness   Measured ink",
         ]
         for i, ch, cov, ink in self.ramp.table():
             shown = "' '" if ch == " " else repr(ch)
             lines.append(f" {i:>3}  {shown:<6} {cov:>10.4f} {ink:>10.4f}")
-        lines.append(f"  最大墨量 {self.ramp.max_ink:.4f} —— 黑底下输出亮度的天花板")
+        lines.append(f"  Maximum ink {self.ramp.max_ink:.4f} — brightness ceiling on black")
         return "\n".join(lines)
 
 
@@ -337,16 +337,16 @@ def as_tuple_rgb(color: object) -> tuple[int, int, int] | None:
         if len(text) == 3:
             text = "".join(c * 2 for c in text)
         if len(text) != 6:
-            raise ValueError(f"无法解析颜色 {color!r}")
+            raise ValueError(f"Could not parse color {color!r}")
         try:
             return tuple(int(text[i:i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
         except ValueError as exc:
-            raise ValueError(f"无法解析颜色 {color!r}") from exc
+            raise ValueError(f"Could not parse color {color!r}") from exc
     seq = tuple(int(c) for c in color)  # type: ignore[arg-type]
     if len(seq) == 4:
         seq = seq[:3]
     if len(seq) != 3:
-        raise ValueError(f"颜色必须是 3 个分量，收到 {color!r}")
+        raise ValueError(f"Color must have 3 components; received {color!r}")
     return seq  # type: ignore[return-value]
 
 
@@ -363,7 +363,7 @@ def _brightness(rgb: np.ndarray, metric: str) -> np.ndarray:
     if metric == "average":
         return rgb.mean(axis=-1)
     raise ValueError(
-        f"未知的亮度度量 {metric!r}，可用: {', '.join(BRIGHTNESS_METRICS)}"
+        f"Unknown brightness metric {metric!r}; choose from: {', '.join(BRIGHTNESS_METRICS)}"
     )
 
 
@@ -756,45 +756,45 @@ class AsciiOptions:
 
     def validate(self) -> None:
         if self.cols < 1:
-            raise ValueError("cols 至少为 1")
+            raise ValueError("cols must be at least 1")
         if self.cell_width is not None and self.cell_width <= 0:
-            raise ValueError("cell_width 必须为正数")
+            raise ValueError("cell_width must be positive")
         if self.font_size < 4:
-            raise ValueError("font_size 太小，至少 4")
+            raise ValueError("font_size is too small; it must be at least 4")
         if self.metric not in BRIGHTNESS_METRICS:
             raise ValueError(
-                f"未知的亮度度量 {self.metric!r}，可用: {', '.join(BRIGHTNESS_METRICS)}"
+                f"Unknown brightness metric {self.metric!r}; choose from: {', '.join(BRIGHTNESS_METRICS)}"
             )
         if self.color_mode not in COLOR_MODES:
             raise ValueError(
-                f"未知的配色方式 {self.color_mode!r}，可用: {', '.join(COLOR_MODES)}"
+                f"Unknown color mode {self.color_mode!r}; choose from: {', '.join(COLOR_MODES)}"
             )
         if self.gamma <= 0:
-            raise ValueError("gamma 必须为正数")
+            raise ValueError("gamma must be positive")
         if self.image_saturation < 0:
-            raise ValueError("image_saturation 不能为负数")
+            raise ValueError("image_saturation cannot be negative")
         if not 0.0 <= self.glyph_purity <= 1.0:
-            raise ValueError("glyph_purity 必须位于 0.0~1.0")
+            raise ValueError("glyph_purity must be between 0.0 and 1.0")
         if not 0.0 <= self.highlight <= 1.0:
-            raise ValueError("highlight 必须位于 0.0~1.0")
+            raise ValueError("highlight must be between 0.0 and 1.0")
         if not 0.0 <= self.edges <= 1.0:
-            raise ValueError("edges 必须位于 0.0~1.0")
+            raise ValueError("edges must be between 0.0 and 1.0")
         if self.edges > 0.0 and not EDGE_DETECTION_ENABLED:
             raise ValueError(
-                "边界检测功能已临时屏蔽（实测效果不达预期）。如需重新启用，把 "
-                "ascii_art.core.EDGE_DETECTION_ENABLED 改为 True，"
-                "并把 CLI/GUI 上的入口加回来（见 README 对应小节）。"
+                "Edge detection is temporarily disabled because its measured results were not satisfactory. "
+                "To re-enable it, set ascii_art.core.EDGE_DETECTION_ENABLED to True and restore the CLI/GUI "
+                "controls (see the corresponding README section)."
             )
         if self.candidates < 1:
-            raise ValueError("candidates 至少为 1")
+            raise ValueError("candidates must be at least 1")
         if self.equalize not in EQUALIZE_MODES:
             raise ValueError(
-                f"未知的均衡化方式 {self.equalize!r}，可用: {', '.join(EQUALIZE_MODES)}"
+                f"Unknown equalization mode {self.equalize!r}; choose from: {', '.join(EQUALIZE_MODES)}"
             )
         if self.equalize_window < 2:
-            raise ValueError("equalize_window 至少为 2 个字符单元")
+            raise ValueError("equalize_window must be at least 2 character cells")
         if self.equalize_clip < 0:
-            raise ValueError("equalize_clip 不能为负数")
+            raise ValueError("equalize_clip cannot be negative")
 
 
 @dataclass
@@ -987,7 +987,7 @@ def convert(source: Image.Image, opts: AsciiOptions | None = None) -> AsciiResul
     rgba = source if source.mode == "RGBA" else source.convert("RGBA")
     src_w, src_h = rgba.size
     if src_w < 1 or src_h < 1:
-        raise ValueError("输入图片尺寸为空")
+        raise ValueError("Input image has no pixels")
 
     # 边界替换需要方向字符，缺的自动补齐（会在结果里报告补了哪些）
     added = ""
