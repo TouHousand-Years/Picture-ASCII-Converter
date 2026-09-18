@@ -57,6 +57,7 @@ The settings panel is scrollable when it is taller than the window.
 
 - The main canvas shows the latest rendered result.
 - Transparent output is shown over a checkerboard.
+- **Watermark** replaces character cells in any corner with the THY-Workshop attribution and project URL; the same text is included in text exports.
 - The information panel reports the character grid, cell size, output size, font, character usage, and render time.
 
 ## Export Options

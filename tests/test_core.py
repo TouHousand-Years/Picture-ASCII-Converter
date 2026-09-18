@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageChops
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -981,8 +981,59 @@ def test_gui_control_defaults_track_the_core_defaults():
             (app.sat_var, "glyph_purity"), (app.invert_var, "invert"),
         ):
             assert var.get() == getattr(opts, field), field
+
+        # 英文说明必须交给统一的自适应换行机制，不能再写死为旧版的 252px。
+        wrapped = {label for label, _parent, _inset in app._wrapping_labels}
+        assert app.candidates_hint in wrapped
+        assert app.metric_hint in wrapped
+        assert app.equalize_hint in wrapped
+        assert app.mode_hint in wrapped
+        assert app.info_label in wrapped
+        assert int(app.panel.canvas.cget("width")) >= 360
+        assert all(int(label.cget("wraplength")) != 252 for label in wrapped)
+        assert app.watermark_var.get() is False
+        assert app.watermark_position_var.get() == "Bottom Right"
+        assert str(app.watermark_position_combo.cget("state")) == "disabled"
     finally:
         root.destroy()
+
+
+def test_watermark_can_be_placed_in_each_corner():
+    from ascii_art.gui import WATERMARK_LINES, WATERMARK_POSITIONS, _add_watermark
+
+    source = solid((90, 120, 160), (900, 400))
+    for position in WATERMARK_POSITIONS:
+        result = aa.convert(source, aa.AsciiOptions(cols=80))
+        before = result.image.copy()
+        colors_before = result.colors.copy()
+        _add_watermark(result, position, (0, 0, 0))
+
+        first_row = 0 if position.startswith("Top") else result.rows - 2
+        for offset, expected in enumerate(WATERMARK_LINES):
+            row = result.lines[first_row + offset]
+            if position.endswith("Left"):
+                assert row.startswith(expected)
+                assert row[len(expected)] == " "
+            else:
+                assert row.endswith(expected)
+                assert row[result.cols - len(expected) - 1] == " "
+        assert result.image.mode == "RGB"
+        assert ImageChops.difference(before, result.image).getbbox() is not None
+        assert np.array_equal(result.colors, colors_before)
+
+
+def test_watermark_is_clipped_to_a_small_character_grid_and_exported_as_text():
+    from ascii_art.gui import WATERMARK_LINES, _add_watermark
+
+    result = aa.convert(
+        solid((20, 30, 40), (160, 200)),
+        aa.AsciiOptions(cols=20, background=None),
+    )
+    _add_watermark(result, "Top Left", None)
+    assert result.lines[0] == WATERMARK_LINES[0][:result.cols]
+    assert result.lines[1] == WATERMARK_LINES[1][:result.cols]
+    assert result.text.splitlines()[:2] == result.lines[:2]
+    assert result.image.mode == "RGBA"
 
 
 def test_cli_list_ramp_and_convert(tmp_path=Path("samples/_tmp_cli")):

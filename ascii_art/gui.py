@@ -29,6 +29,7 @@ from .core import (
     AsciiOptions,
     AsciiResult,
     GlyphSet,
+    as_tuple_rgb,
     convert,
     find_default_font,
 )
@@ -43,6 +44,18 @@ BACKGROUNDS: dict[str, object] = {
 #: 密度快捷按钮
 DENSITY_PRESETS = (60, 100, 160, 240)
 
+# 英文界面比中文文案更占横向空间。右栏给控件留出舒服的基础宽度，
+# 文字的实际换行宽度仍会在窗口/面板尺寸变化时动态更新。
+PANEL_WIDTH = 360
+MIN_WRAP_LENGTH = 120
+
+WATERMARK_LINES = (
+    "Powered by Picture ASCII Converter from THY-Workshop",
+    "https://github.com/TouHousand-Years/Picture-ASCII-Converter",
+)
+WATERMARK_TEXT = "\n".join(WATERMARK_LINES)
+WATERMARK_POSITIONS = ("Top Left", "Top Right", "Bottom Left", "Bottom Right")
+
 #: 界面控件的初值一律引用核心默认值，免得两处各写一份、改一处忘一处。
 _DEFAULTS = AsciiOptions()
 
@@ -56,6 +69,63 @@ def _checkerboard(size: tuple[int, int], cell: int = 10) -> Image.Image:
     arr[mask] = (66, 66, 66)
     arr[~mask] = (92, 92, 92)
     return Image.fromarray(arr, "RGB")
+
+
+def _add_watermark(
+    result: AsciiResult,
+    position: str,
+    background: object,
+) -> AsciiResult:
+    """用水印文字强制替换角落里的字符单元，并同步更新图像与纯文本。"""
+    if position not in WATERMARK_POSITIONS:
+        raise ValueError(f"Unknown watermark position: {position}")
+
+    if result.cols < 1 or result.rows < 1:
+        return result
+
+    spacer = (lambda line: f"{line} ") if position.endswith("Left") else (
+        lambda line: f" {line}"
+    )
+    visible_lines = tuple(
+        spacer(line) for line in WATERMARK_LINES[: min(len(WATERMARK_LINES), result.rows)]
+    )
+    first_row = 0 if position.startswith("Top") else result.rows - len(visible_lines)
+    bg = as_tuple_rgb(background)
+
+    glyphs = GlyphSet(
+        "".join(dict.fromkeys("".join(WATERMARK_LINES))),
+        font_path=result.font_path,
+        font_size=result.font_size,
+    )
+    masks = {
+        ch: Image.fromarray((glyphs.atlas[index] * 255).astype(np.uint8), "L")
+        for index, ch in enumerate(glyphs.chars)
+    }
+    image = result.image.copy()
+    lines = [list(line.ljust(result.cols)[:result.cols]) for line in result.lines]
+
+    for line_offset, watermark_line in enumerate(visible_lines):
+        text = watermark_line[:result.cols]
+        first_col = 0 if position.endswith("Left") else result.cols - len(text)
+        row = first_row + line_offset
+        for offset, ch in enumerate(text):
+            col = first_col + offset
+            lines[row][col] = ch
+            text_color = tuple(int(channel) for channel in result.colors[row, col])
+            x0, y0 = col * result.cell_w, row * result.cell_h
+            box = (x0, y0, x0 + result.cell_w, y0 + result.cell_h)
+            if bg is None:
+                cell = Image.new("RGBA", (result.cell_w, result.cell_h), (*text_color, 0))
+                cell.putalpha(masks[ch])
+                image.paste(cell, (x0, y0))
+            else:
+                image.paste(bg, box)
+                ink = Image.new(image.mode, (result.cell_w, result.cell_h), text_color)
+                image.paste(ink, (x0, y0), masks[ch])
+
+    result.lines = ["".join(line) for line in lines]
+    result.image = image
+    return result
 
 
 class ScrollableFrame(ttk.Frame):
@@ -121,6 +191,7 @@ class AsciiArtApp:
         self._render_lock = threading.Lock()
         self._canvas_image: ImageTk.PhotoImage | None = None
         self._checker_cache: tuple[tuple[int, int], Image.Image] | None = None
+        self._wrapping_labels: list[tuple[ttk.Label, tk.Widget, int]] = []
 
         root.title("Color ASCII Art Converter")
         root.geometry("1360x880")
@@ -174,10 +245,12 @@ class AsciiArtApp:
         self.canvas.bind("<Configure>", self._on_canvas_resize)
 
         # 参数栏比窗口高，套一层可滚动容器
-        self.panel = ScrollableFrame(body, width=300)
+        self.panel = ScrollableFrame(body, width=PANEL_WIDTH)
         self.panel.pack(side="right", fill="y")
         self._build_panel(self.panel.body)
+        self.panel.body.bind("<Configure>", self._refresh_wrapping, add="+")
         self.panel.body.update_idletasks()
+        self._refresh_wrapping()
         self.panel._on_content_resize()
 
     def _build_panel(self, panel: ttk.Frame) -> None:
@@ -196,12 +269,15 @@ class AsciiArtApp:
 
         presets = ttk.Frame(box)
         presets.pack(fill="x")
-        ttk.Label(presets, text="Presets:").pack(side="left")
-        for value in DENSITY_PRESETS:
+        self._add_wrapped_label(presets, "Presets:").grid(
+            row=0, column=0, columnspan=4, sticky="w", pady=(0, 3)
+        )
+        for column, value in enumerate(DENSITY_PRESETS):
             ttk.Button(
-                presets, text=str(value), width=4,
+                presets, text=str(value),
                 command=lambda v=value: self.set_cols(v),
-            ).pack(side="left", padx=2)
+            ).grid(row=1, column=column, sticky="ew", padx=(0 if column == 0 else 3, 0))
+            presets.columnconfigure(column, weight=1, uniform="density-preset")
 
         # -- 外观 ---------------------------------------------------------- #
         box = ttk.LabelFrame(panel, text="Appearance", padding=10)
@@ -214,7 +290,9 @@ class AsciiArtApp:
             lambda v: f"{int(round(v))} px", self._on_font_change,
         )
 
-        ttk.Label(box, text="Character set (order does not matter; levels use measured ink)").pack(anchor="w")
+        self._add_wrapped_label(
+            box, "Character set (order does not matter; levels use measured ink)"
+        ).pack(fill="x", anchor="w")
         self.chars_var = tk.StringVar(value=_DEFAULTS.chars)
         ttk.Entry(box, textvariable=self.chars_var).pack(fill="x", pady=(2, 4))
         self.chars_var.trace_add("write", lambda *_: self.schedule_render())
@@ -223,15 +301,17 @@ class AsciiArtApp:
         char_btns.pack(fill="x", pady=(0, 6))
         ttk.Button(
             char_btns, text="Measured Ramp…", command=self.show_ramp_table
-        ).pack(side="left")
+        ).grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 4))
         ttk.Button(
             char_btns, text="Block Characters",
             command=lambda: self.chars_var.set(BLOCK_CHARS),
-        ).pack(side="left", padx=(4, 0))
+        ).grid(row=1, column=0, sticky="ew", padx=(0, 2))
         ttk.Button(
             char_btns, text="Full ASCII",
             command=lambda: self.chars_var.set(ASCII_CHARS),
-        ).pack(side="left", padx=(4, 0))
+        ).grid(row=1, column=1, sticky="ew", padx=(2, 0))
+        char_btns.columnconfigure(0, weight=1, uniform="character-action")
+        char_btns.columnconfigure(1, weight=1, uniform="character-action")
 
         ttk.Label(box, text="Background").pack(anchor="w")
         self.bg_var = tk.StringVar(value="Black")
@@ -254,23 +334,21 @@ class AsciiArtApp:
         )
         metric_combo.pack(fill="x", pady=(2, 2))
         metric_combo.bind("<<ComboboxSelected>>", self._on_metric_change)
-        self.metric_hint = ttk.Label(
-            box, text="", foreground="#666", wraplength=252, justify="left"
-        )
-        self.metric_hint.pack(anchor="w", pady=(0, 6))
+        self.metric_hint = self._add_wrapped_label(box, "", foreground="#666")
+        self.metric_hint.pack(fill="x", anchor="w", pady=(0, 6))
 
         self.candidates_var = tk.IntVar(value=_DEFAULTS.candidates)
         self.candidates_scale, self.candidates_label = self._add_slider(
             box, "Candidate count (1 = use only the ceiling)", 1, 10, _DEFAULTS.candidates,
             lambda v: f"{int(round(v))} candidates", self._on_candidates_change,
         )
-        self.candidates_hint = ttk.Label(
+        self.candidates_hint = self._add_wrapped_label(
             box,
             text="Starting at the ceiling level, inspect denser characters and choose the one "
                  "whose average color is closest to the source; the error can only decrease.",
-            foreground="#666", wraplength=252, justify="left",
+            foreground="#666",
         )
-        self.candidates_hint.pack(anchor="w", pady=(0, 6))
+        self.candidates_hint.pack(fill="x", anchor="w", pady=(0, 6))
 
         self.highlight_var = tk.DoubleVar(value=_DEFAULTS.highlight)
         self.highlight_scale, self.highlight_label = self._add_slider(
@@ -292,10 +370,8 @@ class AsciiArtApp:
         )
         eq_combo.pack(fill="x", pady=(2, 2))
         eq_combo.bind("<<ComboboxSelected>>", self._on_equalize_change)
-        self.equalize_hint = ttk.Label(
-            box, text="", foreground="#666", wraplength=252, justify="left"
-        )
-        self.equalize_hint.pack(anchor="w", pady=(0, 6))
+        self.equalize_hint = self._add_wrapped_label(box, "", foreground="#666")
+        self.equalize_hint.pack(fill="x", anchor="w", pady=(0, 6))
 
         self.eq_window_var = tk.IntVar(value=_DEFAULTS.equalize_window)
         self.eq_window_scale, self.eq_window_label = self._add_slider(
@@ -323,10 +399,8 @@ class AsciiArtApp:
         )
         mode_combo.pack(fill="x", pady=(2, 2))
         mode_combo.bind("<<ComboboxSelected>>", self._on_color_mode_change)
-        self.mode_hint = ttk.Label(
-            box, text="", foreground="#666", wraplength=252, justify="left"
-        )
-        self.mode_hint.pack(anchor="w", pady=(0, 6))
+        self.mode_hint = self._add_wrapped_label(box, "", foreground="#666")
+        self.mode_hint.pack(fill="x", anchor="w", pady=(0, 6))
 
         self.sat_var = tk.DoubleVar(value=_DEFAULTS.glyph_purity)
         self.sat_scale, self.sat_label = self._add_slider(
@@ -340,15 +414,76 @@ class AsciiArtApp:
             command=self.schedule_render,
         ).pack(anchor="w")
 
+        # -- 水印 ---------------------------------------------------------- #
+        box = ttk.LabelFrame(panel, text="Watermark", padding=10)
+        box.grid(row=row, column=0, sticky="ew", pady=(0, 10))
+        row += 1
+
+        self.watermark_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            box,
+            text="Show attribution watermark",
+            variable=self.watermark_var,
+            command=self._on_watermark_change,
+        ).pack(anchor="w", pady=(0, 5))
+        self._add_wrapped_label(box, "Corner").pack(fill="x", anchor="w")
+        self.watermark_position_var = tk.StringVar(value="Bottom Right")
+        self.watermark_position_combo = ttk.Combobox(
+            box,
+            textvariable=self.watermark_position_var,
+            values=WATERMARK_POSITIONS,
+            state="disabled",
+        )
+        self.watermark_position_combo.pack(fill="x", pady=(2, 5))
+        self.watermark_position_combo.bind(
+            "<<ComboboxSelected>>", lambda _event: self.schedule_render()
+        )
+        self._add_wrapped_label(
+            box, WATERMARK_TEXT, foreground="#666"
+        ).pack(fill="x", anchor="w")
+
         # -- 输出信息 ------------------------------------------------------ #
         box = ttk.LabelFrame(panel, text="Output Info", padding=10)
         box.grid(row=row, column=0, sticky="ew")
         self.info_var = tk.StringVar(value="—")
-        ttk.Label(box, textvariable=self.info_var, justify="left").pack(anchor="w")
+        self.info_label = self._add_wrapped_label(
+            box, textvariable=self.info_var
+        )
+        self.info_label.pack(fill="x", anchor="w")
 
         for child in panel.winfo_children():
             child.grid_configure(sticky="ew")
         panel.columnconfigure(0, weight=1)
+
+    def _add_wrapped_label(
+        self,
+        parent: tk.Widget,
+        text: str | None = None,
+        *,
+        inset: int = 20,
+        **kwargs,
+    ) -> ttk.Label:
+        """创建会跟随父容器宽度自动换行的标签。"""
+        if text is not None:
+            kwargs["text"] = text
+        label = ttk.Label(
+            parent,
+            justify="left",
+            anchor="w",
+            wraplength=max(MIN_WRAP_LENGTH, PANEL_WIDTH - inset),
+            **kwargs,
+        )
+        self._wrapping_labels.append((label, parent, inset))
+        return label
+
+    def _refresh_wrapping(self, _event: tk.Event | None = None) -> None:
+        """按标签所在容器的可用宽度刷新换行，避免英文文案撑破右栏。"""
+        for label, parent, inset in self._wrapping_labels:
+            if not label.winfo_exists():
+                continue
+            available = parent.winfo_width() - inset
+            if available > 1:
+                label.configure(wraplength=max(MIN_WRAP_LENGTH, available))
 
     def _add_slider(
         self,
@@ -364,8 +499,8 @@ class AsciiArtApp:
 
         先建好数值标签再 ``set()``，否则 set 触发的回调会引用到还不存在的控件。
         """
-        ttk.Label(parent, text=title).pack(anchor="w")
-        scale = ttk.Scale(parent, from_=low, to=high, orient="horizontal", length=252)
+        self._add_wrapped_label(parent, title).pack(fill="x", anchor="w")
+        scale = ttk.Scale(parent, from_=low, to=high, orient="horizontal")
         scale.pack(fill="x")
         label = ttk.Label(parent, text=formatter(value), font=("Segoe UI", 9, "bold"))
         label.pack(anchor="w", pady=(2, 6))
@@ -387,6 +522,12 @@ class AsciiArtApp:
     def _on_sat_change(self, value, formatter, label) -> None:
         self.sat_var.set(value)
         label.configure(text=formatter(value))
+        self.schedule_render()
+
+    def _on_watermark_change(self) -> None:
+        self.watermark_position_combo.configure(
+            state="readonly" if self.watermark_var.get() else "disabled"
+        )
         self.schedule_render()
 
     def _on_image_sat_change(self, value, formatter, label) -> None:
@@ -569,15 +710,30 @@ class AsciiArtApp:
         self.status_var.set("Rendering…")
         threading.Thread(
             target=self._worker,
-            args=(self._token, self.source, self._collect_options()),
+            args=(
+                self._token,
+                self.source,
+                self._collect_options(),
+                self.watermark_var.get(),
+                self.watermark_position_var.get(),
+            ),
             daemon=True,
         ).start()
 
-    def _worker(self, token: int, source: Image.Image, opts: AsciiOptions) -> None:
+    def _worker(
+        self,
+        token: int,
+        source: Image.Image,
+        opts: AsciiOptions,
+        watermark: bool,
+        watermark_position: str,
+    ) -> None:
         started = time.perf_counter()
         try:
             with self._render_lock:      # 串行化：快速拖动会叠出多个请求
                 result = convert(source, opts)
+                if watermark:
+                    result = _add_watermark(result, watermark_position, opts.background)
             self._queue.put((token, result, time.perf_counter() - started, None))
         except Exception as exc:  # noqa: BLE001 - 线程里必须兜住所有异常
             self._queue.put((token, None, 0.0, exc))
